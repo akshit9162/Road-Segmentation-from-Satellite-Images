@@ -1,42 +1,48 @@
-# dataset.py
 import os
-import numpy as np
-from torch.utils.data import Dataset
-import cv2
+from PIL import Image
 import torch
+from torch.utils.data import Dataset
+import torchvision.transforms as T
+
 
 class RoadSegDataset(Dataset):
-    def __init__(self, data_dir, img_size=512):
-        self.data_dir = data_dir
-        self.img_size = img_size
+    def __init__(self, root):
+        self.root = root
 
-        all_imgs = sorted([f for f in os.listdir(data_dir) if f.endswith("_sat.jpg")])
-        self.basenames = []
+        # Find all satellite-mask pairs automatically
+        files = sorted(os.listdir(root))
+        sats = [f for f in files if f.endswith("_sat.jpg")]
+        masks = [f.replace("_sat.jpg", "_mask.png") for f in sats]
 
-        for imgfile in all_imgs:
-            base = imgfile.replace("_sat.jpg", "")
-            if os.path.exists(os.path.join(data_dir, base + "_mask.png")):
-                self.basenames.append(base)
+        # Validate existence
+        self.pairs = []
+        for s, m in zip(sats, masks):
+            if os.path.exists(os.path.join(root, m)):
+                self.pairs.append((s, m))
 
-        print("Total valid pairs:", len(self.basenames))
+        print("Total valid pairs:", len(self.pairs))
+
+        # Transforms
+        self.img_tf = T.Compose([
+            T.Resize((512, 512)),
+            T.ToTensor(),
+        ])
+
+        self.mask_tf = T.Compose([
+            T.Resize((512, 512)),
+            T.ToTensor(),
+        ])
 
     def __len__(self):
-        return len(self.basenames)
+        return len(self.pairs)
 
     def __getitem__(self, idx):
-        base = self.basenames[idx]
+        sat_name, mask_name = self.pairs[idx]
 
-        # Load image
-        img = cv2.imread(os.path.join(self.data_dir, base + "_sat.jpg"))
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        img = cv2.resize(img, (self.img_size, self.img_size))
-        img = img.astype(np.float32) / 255.0
-        img = torch.tensor(img).permute(2, 0, 1)  # (3,H,W)
+        img = Image.open(os.path.join(self.root, sat_name)).convert("RGB")
+        mask = Image.open(os.path.join(self.root, mask_name)).convert("L")
 
-        # Load mask
-        mask = cv2.imread(os.path.join(self.data_dir, base + "_mask.png"), 0)
-        mask = cv2.resize(mask, (self.img_size, self.img_size))
-        mask = (mask > 127).astype(np.float32)  # binary 0/1
-        mask = torch.tensor(mask).unsqueeze(0)  # (1,H,W)
+        img = self.img_tf(img)
+        mask = self.mask_tf(mask)
 
         return img, mask
