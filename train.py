@@ -3,9 +3,10 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from dataset import RoadSegDataset
-from models import UNetPP
+from models import AttUNet
 import torch.optim as optim
 from tqdm import tqdm
+
 
 def dice_loss(pred, target, eps=1e-7):
     pred = torch.sigmoid(pred)
@@ -15,15 +16,14 @@ def dice_loss(pred, target, eps=1e-7):
 
 def train():
     device = "cuda" if torch.cuda.is_available() else "mps"
-
     print("Using device:", device)
 
     dataset = RoadSegDataset("/Users/akshitgupta/Desktop/datathon/data")
-    loader = DataLoader(dataset, batch_size=4, shuffle=True, num_workers=0)
+    loader = DataLoader(dataset, batch_size=4, shuffle=True)
 
-    model = UNetPP().to(device)
-    optimizer = optim.Adam(model.parameters(), lr=1e-4)
+    model = AttUNet().to(device)
     bce_loss = nn.BCEWithLogitsLoss()
+    optimizer = optim.Adam(model.parameters(), lr=1e-4)
 
     EPOCHS = 20
 
@@ -36,9 +36,8 @@ def train():
             imgs = imgs.to(device)
             masks = masks.to(device)
 
-            logits = model(imgs)   # now returns ONLY 1 tensor
-
-            logits = logits.squeeze(1)   # (B,1,H,W) -> (B,H,W)
+            logits = model(imgs)
+            logits = logits.squeeze(1)
             masks = masks.squeeze(1)
 
             loss = bce_loss(logits, masks) + dice_loss(logits, masks)
@@ -50,10 +49,11 @@ def train():
             epoch_loss += loss.item()
             pbar.set_postfix({"loss": loss.item()})
 
-        print(f"Epoch {epoch+1} Loss: {epoch_loss/len(loader):.4f}")
+        print(f"Epoch {epoch+1} Loss: {epoch_loss / len(loader):.4f}")
 
-    torch.save(model.state_dict(), "unetpp_best.pth")
-    print("Model saved.")
+    torch.save(model.state_dict(), "att_unet_best.pth")
+    print("Model saved as att_unet_best.pth")
+
 
 if __name__ == "__main__":
     train()
